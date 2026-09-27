@@ -1,1 +1,123 @@
-* { box-sizing: border-box; }
+* {
+    user-select: none;
+}
+
+html, body {
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.container{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.main{
+    background-color: #b6b5b5;
+    width: 445px;
+    height: 670px;
+    border-radius: 10px;
+    box-shadow: #9c9c9c;
+    position: absolute;
+}
+
+.screen{
+    width: 405px;
+    height: 165px;
+    background-color: #131313;
+    margin-top: 15px;
+    margin-left: 20px; 
+    border-radius: 20px;
+    text-align: right;
+    position: absolute;
+}
+
+.keypad{
+    width: 400px;
+    height: 460px;
+    margin-top: 195px;
+    margin-left: 20px;
+    background-color: #9c9c9c;
+    border-radius: 20px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    gap: 5px;
+    padding: 5px;
+}
+
+.function-key, .number-key {
+    display: flex;
+    border-radius: 20px;
+    position: relative;
+    text-align: center;
+    justify-content: center;
+    align-items: center;
+    font-size: 45px;
+    cursor: pointer;
+    transition: 0.1s;
+}
+
+.number-key {
+    background-color: #777;
+    color: black;
+}
+
+.function-key {
+    background-color: #222;
+    color: white;
+}
+
+#equals {
+    background-color: #15299b;
+}
+
+#equals:hover {
+    background-color: #092395;
+}
+
+.current-expression {
+    font-size: 60px;
+    color: white;
+    margin-right: 10px;
+    margin-left: 10px;
+    margin-top: 25px;
+    width: auto;
+    user-select: auto;
+}
+
+.previous-answer {
+    font-size: 30px;
+    color: gray;
+    margin-right: 7px;
+    margin-left: 7px;
+    margin-top: 25px;
+    width: auto;
+    user-select: auto;
+}
+
+.number-key:hover {
+    background-color: #696969;
+    transform: scale(1.05);
+}
+
+.function-key:hover {
+    background-color: #313131;
+    transform: scale(1.05);
+}
+
+.number-key:active{
+    background-color: #666;
+    transform: scale(0.95);
+    box-shadow: inset 0 2px 5px #0003;
+}
+
+.function-key:active{
+    background-color: #363636;
+    transform: scale(0.95);
+    box-shadow: inset 0 2px 5px #fff3;
+}
