@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 #include <optional>
@@ -21,13 +22,24 @@ namespace srn{
          * @returns `true` if the string is a number literal and `false` otherwise
          */
         bool IsNumberLiteral(std::string raw){
-            bool FoundDecimalPoint = false;
-            for(const char& c : raw)
-                if(std::isdigit(c)) continue;
-                else if (c == '.' && !FoundDecimalPoint) {FoundDecimalPoint = true; continue;}
-                else if (c == '.' && FoundDecimalPoint) return false;
-                else return false;
-            return true;
+            if(raw.empty()) return false;
+            bool foundDecimalPoint = false;
+            bool seenDigit = false;
+
+            for(size_t i = 0; i < raw.size(); ++i){
+                const char c = raw[i];
+                if(std::isdigit(static_cast<unsigned char>(c))) {
+                    seenDigit = true;
+                    continue;
+                }
+                if(c == '.') {
+                    if(foundDecimalPoint) return false;
+                    foundDecimalPoint = true;
+                    continue;
+                }
+                return false;
+            }
+            return seenDigit;
         }
     }
 
@@ -56,38 +68,60 @@ namespace srn{
     std::vector<Token> tokenise(std::string raw){
         std::vector<Token> result = {};
         std::string current;
+
+        auto commit_number = [&](){
+            if(!current.empty()){
+                if(!detail::IsNumberLiteral(current))
+                    throw std::invalid_argument("Invalid number literal: \"" + current + "\"");
+                result.push_back(Token{TokenType::NumberLiteral, current});
+                current.clear();
+            }
+        };
+
         for(const char& character : raw){
-            if(std::isdigit(character)) current += character;
-            else if (character == '+') {
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+            if(std::isspace(static_cast<unsigned char>(character))) {
+                commit_number();
+                continue;
+            }
+            if(std::isdigit(static_cast<unsigned char>(character)) || character == '.'){
+                current += character;
+                continue;
+            }
+            if(character == '+') {
+                commit_number();
                 result.push_back(Token{TokenType::OperatorPlus});
             }
             else if (character == '-'){
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+                commit_number();
                 result.push_back(Token{TokenType::OperatorMinus});
             }
             else if (character == '*'){
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+                commit_number();
                 result.push_back(Token{TokenType::OperatorMultiply});
             }
             else if (character == '/'){
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+                commit_number();
                 result.push_back(Token{TokenType::OperatorDivide});
             }
             else if (character == '^'){
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+                commit_number();
                 result.push_back(Token{TokenType::OperatorExponentiate});
             }
             else if (character == '('){
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+                commit_number();
                 result.push_back(Token{TokenType::OpenParenthesis});
             }
             else if (character == ')'){
-                if(!current.empty()) {result.push_back(Token{TokenType::NumberLiteral, current}); current = "";}
+                commit_number();
                 result.push_back(Token{TokenType::CloseParenthesis});
             }
-            else throw std::invalid_argument("Unsupported character \"" + current + character +"\"");
+            else {
+                throw std::invalid_argument("Unsupported character \"" + std::string(1, character) + "\"");
+            }
         }
+
+        commit_number();
+        return result;
     }
 
     class Node{
@@ -95,7 +129,7 @@ namespace srn{
         Token token;
         Node* LeftChild = nullptr;
         Node* RightChild = nullptr;
-        Node(Token _token = Token{}, Node* left, Node* right): token(_token), LeftChild(left), RightChild(right) {}
+        Node(Token _token = Token{}, Node* left = nullptr, Node* right = nullptr): token(_token), LeftChild(left), RightChild(right) {}
     };
 
     /**
@@ -105,33 +139,99 @@ namespace srn{
      * @throws `std::invalid_argument` if it couldn't validate the tokens
      */
     Node* BuildAST(std::vector<Token> tokens){
-        Node* result = new Node{};
-        for(size_t i = 0; i < tokens.size(); i++){
-            Token token = tokens[i];
-            if(token.type == TokenType::NumberLiteral) result->LeftChild = new Node{token};
-            else if (token.type == TokenType::OpenParenthesis){
-                size_t close_index = i+1;
-                // we need to find the close parenthesis token
-                for(close_index = i + 1; close_index < tokens.size(); close_index++)
-                    if(tokens[close_index].type == TokenType::CloseParenthesis)
-                        break;
-                if(close_index == tokens.size() - 1 && tokens[close_index].type != TokenType::CloseParenthesis){
-                    // we didn't find a closing parenthesis
-                    throw std::invalid_argument("Invalid parenthesis formation; couldn't find matching closing parenthesis for the open parenthesys at index: " + std::to_string(i));
+        if(tokens.empty())
+            throw std::invalid_argument("Expression is empty");
+
+        struct Parser {
+            const std::vector<Token>& tokens;
+            size_t index = 0;
+
+            explicit Parser(const std::vector<Token>& _tokens) : tokens(_tokens) {}
+
+            Node* parseExpression() {
+                Node* left = parseTerm();
+                while(index < tokens.size() &&
+                      (tokens[index].type == TokenType::OperatorPlus ||
+                       tokens[index].type == TokenType::OperatorMinus)) {
+                    Token op = tokens[index++];
+                    Node* right = parseTerm();
+                    Node* node = new Node{op};
+                    node->LeftChild = left;
+                    node->RightChild = right;
+                    left = node;
                 }
-                // now that we found it, we need to make a replica of the tokens vector and run BuildAST on that
-                std::vector<Token> subvector(tokens.begin() + i + 1, tokens.begin() + close_index);
-                Node* InnerResult = BuildAST(subvector);
-                result->RightChild = InnerResult;
-                i = close_index;
-            } else {
-                // now the token is certainly an operator. So, we will exchange the head with another one, and the current head will become the left operator
-                Node* temp = result;
-                result = new Node{token};
-                result->LeftChild = temp; 
-            } 
-        }
-        return result;
+                return left;
+            }
+
+            Node* parseTerm() {
+                Node* left = parsePower();
+                while(index < tokens.size() &&
+                      (tokens[index].type == TokenType::OperatorMultiply ||
+                       tokens[index].type == TokenType::OperatorDivide)) {
+                    Token op = tokens[index++];
+                    Node* right = parsePower();
+                    Node* node = new Node{op};
+                    node->LeftChild = left;
+                    node->RightChild = right;
+                    left = node;
+                }
+                return left;
+            }
+
+            Node* parsePower() {
+                Node* left = parseUnary();
+                if(index < tokens.size() && tokens[index].type == TokenType::OperatorExponentiate) {
+                    Token op = tokens[index++];
+                    Node* right = parsePower();
+                    Node* node = new Node{op};
+                    node->LeftChild = left;
+                    node->RightChild = right;
+                    return node;
+                }
+                return left;
+            }
+
+            Node* parseUnary() {
+                if(index < tokens.size() && tokens[index].type == TokenType::OperatorPlus) {
+                    ++index;
+                    return parseUnary();
+                }
+                if(index < tokens.size() && tokens[index].type == TokenType::OperatorMinus) {
+                    ++index;
+                    Node* operand = parseUnary();
+                    Node* negate = new Node{Token{TokenType::OperatorMultiply}};
+                    negate->LeftChild = new Node{Token{TokenType::NumberLiteral, "-1"}};
+                    negate->RightChild = operand;
+                    return negate;
+                }
+                return parsePrimary();
+            }
+
+            Node* parsePrimary() {
+                if(index >= tokens.size())
+                    throw std::invalid_argument("Unexpected end of expression");
+
+                Token token = tokens[index++];
+                if(token.type == TokenType::NumberLiteral)
+                    return new Node{token};
+
+                if(token.type == TokenType::OpenParenthesis) {
+                    Node* inner = parseExpression();
+                    if(index >= tokens.size() || tokens[index].type != TokenType::CloseParenthesis)
+                        throw std::invalid_argument("Mismatched parentheses");
+                    ++index;
+                    return inner;
+                }
+
+                throw std::invalid_argument("Expected a value");
+            }
+        };
+
+        Parser parser(tokens);
+        Node* root = parser.parseExpression();
+        if(parser.index != tokens.size())
+            throw std::invalid_argument("Unexpected trailing token");
+        return root;
     }
 
 
@@ -142,7 +242,9 @@ namespace srn{
      * @throws `std::invalid_argument` if it cannot evaluate a branch
      */
     double Evaluate(Node* head){
-        double result = 0;
+        if(head == nullptr)
+            throw std::invalid_argument("Empty AST node");
+
         if(head->token.type == TokenType::OperatorPlus)
             return Evaluate(head->LeftChild) + Evaluate(head->RightChild);
         else if (head->token.type == TokenType::OperatorMinus)
@@ -151,13 +253,27 @@ namespace srn{
             return Evaluate(head->LeftChild) * Evaluate(head->RightChild);
         else if (head->token.type == TokenType::OperatorDivide){
             double right = Evaluate(head->RightChild);
-            if(right - 1e-9 <= 0){
+            if(std::abs(right) <= 1e-12)
                 throw std::invalid_argument("division by zero detected!");
-            }
             return Evaluate(head->LeftChild) / right;
         } else if (head->token.type == TokenType::OperatorExponentiate)
             return std::powl(Evaluate(head->LeftChild), Evaluate(head->RightChild));
-        else if (head->token.type == TokenType::NumberLiteral)
+        else if (head->token.type == TokenType::NumberLiteral){
+            if(!head->token.data.has_value())
+                throw std::invalid_argument("Number literal is missing data");
             return std::stod(head->token.data.value());
+        }
+        else throw std::invalid_argument("unrecognised token");
+    }
+
+
+    /**
+     * Bundles all higher calculations into one function call
+     * @param expression the expression, passed a string
+     * @returns the resullt of the expression, of type `double`
+     * @throws `std::invalid_argument` in various cases, all that can be found in the documentation of `Evaluate`, `BuildAST` and `tokenise`
+     */
+    double Calculate(std::string expression){
+        return Evaluate(BuildAST(tokenise(expression)));
     }
 }
